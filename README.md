@@ -44,6 +44,8 @@ For deployment, install the host's existing cron scheduler using [`backend/cron/
 
 The command skips fully validated runs while their source or tile cache is still within its configured lifetime. Failed or unavailable cycles are logged and do not create partial run records; later cron executions recheck the recent 24-hour window. The frontend refreshes the run catalog every five minutes and keeps the user's selected run if it remains available.
 
+For the single-VM Oracle Cloud deployment setup, see [`deploy/README.md`](deploy/README.md). It covers production serving, persistent storage, TLS, environment configuration, and the existing scheduled refresh.
+
 ## API
 
 - `GET /api/forecast-runs/` lists runs whose source or tile cache is still available and identifies the latest run.
