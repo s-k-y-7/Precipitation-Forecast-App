@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GeoJSON, MapContainer, Marker, TileLayer, ZoomControl, useMapEvents } from 'react-leaflet';
-import { fetchForecastRuns, fetchIndiaCoverage, fetchPointForecast, intervalTileUrl, type ForecastRun, type IndiaCoverage, type PointForecast } from './api/forecasts';
+import { GeoJSON, MapContainer, Marker, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
+import { CitySearch } from './CitySearch';
+import { fetchForecastRuns, fetchIndiaCoverage, fetchPointForecast, intervalTileUrl, type ForecastRun, type IndiaCoverage, type PlaceSearchResult, type PointForecast } from './api/forecasts';
 
 const basemap = import.meta.env.VITE_BASEMAP_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const steps = [3, 6, 9, 12, 15, 18, 21, 24];
@@ -32,6 +33,14 @@ function MapClickHandler({ onSelect }: { onSelect: (lat: number, lon: number) =>
   return null;
 }
 
+function MapNavigator({ target }: { target: [number, number] | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo(target, 8, { duration: 0.7 });
+  }, [map, target]);
+  return null;
+}
+
 export function App() {
   const [runs, setRuns] = useState<ForecastRun[]>([]);
   const [latestRunId, setLatestRunId] = useState<string | null>(null);
@@ -40,6 +49,7 @@ export function App() {
   const [coverage, setCoverage] = useState<IndiaCoverage | null>(null);
   const [point, setPoint] = useState<PointForecast | null>(null);
   const [selection, setSelection] = useState<[number, number] | null>(null);
+  const [mapTarget, setMapTarget] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(true);
   const [pointLoading, setPointLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
@@ -100,19 +110,25 @@ export function App() {
     if (!selectedRunId) setPointError('No validated forecast run is currently available.');
     else setPointError(null);
   };
+  const chooseCity = (place: PlaceSearchResult) => {
+    setMapTarget([place.latitude, place.longitude]);
+    choosePoint(place.latitude, place.longitude);
+  };
   const displayedErrors = [runError, coverageError, locationError, pointError].filter((message): message is string => Boolean(message));
 
   return <main className="app-shell">
     <header className="topbar"><div className="brand-lockup"><span className="brand-mark" aria-hidden="true">☁</span><div><p className="eyebrow">ECMWF IFS · INDIA</p><h1>Precipitation forecast</h1></div></div>
+      <div className="topbar-controls"><CitySearch onSelect={chooseCity}/>
       <label className="run-control"><span>Forecast run</span><select aria-label="Forecast run" value={selectedRunId ?? ''} onChange={event => { setSelectedRunId(event.target.value); setPoint(null); setSelection(null); setLocationError(null); setPointError(null); setTileError(false); }} disabled={loading || runs.length === 0}>
         {runs.length === 0 && <option value="">{loading ? 'Loading forecast runs…' : runError ? 'Forecast runs unavailable' : 'No validated runs available'}</option>}{runs.map(run => <option key={run.run_id} value={run.run_id}>{run.run_id === latestRunId ? 'Latest · ' : ''}{formatUtc(run.initialization_time)}</option>)}
-      </select></label></header>
+      </select></label></div></header>
     <section className="map-frame" aria-label="Interactive precipitation forecast map">
       <MapContainer center={[22.5, 82]} zoom={4} minZoom={3} maxZoom={9} maxBounds={[[4, 64], [40, 101]]} maxBoundsViscosity={0.8} zoomControl={false} scrollWheelZoom className="forecast-map">
         <ZoomControl position="bottomright"/><TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>' url={basemap} maxZoom={19}/>
         {coverage && <GeoJSON data={coverage as GeoJSON.GeoJsonObject} style={{ color: '#1e6071', weight: 2, fillOpacity: 0 }} />}
         {selectedRun && selectedRunSteps.includes(step) && <TileLayer key={`${selectedRun.run_id}-${step}`} url={intervalTileUrl(selectedRun.run_id, step)} opacity={0.82} maxNativeZoom={8} maxZoom={9} zIndex={300} eventHandlers={{ tileerror: () => setTileError(true), tileload: () => setTileError(false) }} />}
         {selection && <Marker position={selection}/>}
+        <MapNavigator target={mapTarget}/>
         <MapClickHandler onSelect={choosePoint}/>
       </MapContainer>
       <div className="map-heading"><p className="eyebrow">3-HOUR PRECIPITATION</p><h2>{selectedRun ? `+${step - 3} to +${step} hours` : 'Forecast map'}</h2><p>Precipitation during interval · millimetres</p></div>

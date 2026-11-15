@@ -41,6 +41,7 @@ Open the Vite URL shown in the terminal. Refreshing forecast runs retrieves rece
 ## API
 
 - `GET /api/forecast-runs/` lists runs whose source or tile cache is still available and identifies the latest run.
+- `GET /api/places/search/?q={query}` searches the bundled India-only city and town index (English names and Latin aliases; at most 10 results).
 - `GET /api/forecast-runs/{run_id}/precipitation/v1/{z}/{x}/{y}.png` returns a run-scoped, 256-pixel XYZ tile.
 - `GET /api/forecast-runs/{run_id}/precipitation/v2/{step}/{z}/{x}/{y}.png` returns the 3-hour interval tile ending at `step`.
 - `GET /api/forecast-runs/{run_id}/precipitation/point/?lat={lat}&lon={lon}` returns eight interval values at the nearest ECMWF grid point; coordinates outside India are rejected.

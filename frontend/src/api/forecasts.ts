@@ -36,6 +36,22 @@ export type PointForecast = {
   intervals: { start_step_hours: number; end_step_hours: number; valid_time: string; precipitation_mm: number | null }[];
 };
 
+export type PlaceSearchResult = {
+  id: number;
+  name: string;
+  admin1: string;
+  latitude: number;
+  longitude: number;
+  population: number;
+};
+
+export async function searchPlaces(query: string, signal?: AbortSignal): Promise<{ results: PlaceSearchResult[] }> {
+  const params = new URLSearchParams({ q: query });
+  const response = await fetch(`/api/places/search/?${params}`, { signal });
+  if (!response.ok) throw new Error(`City search failed (${response.status}).`);
+  return response.json() as Promise<{ results: PlaceSearchResult[] }>;
+}
+
 export async function fetchIndiaCoverage(signal?: AbortSignal): Promise<IndiaCoverage> {
   const response = await fetch('/api/coverage/india/', { signal });
   if (!response.ok) throw new Error('India forecast coverage could not be loaded.');

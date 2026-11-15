@@ -1,8 +1,9 @@
 from django.urls import path
 
-from forecasts.views import ForecastRunListView, PrecipitationTileView, IntervalTileView, PointForecastView, IndiaCoverageView
+from forecasts.views import ForecastRunListView, PrecipitationTileView, IntervalTileView, PointForecastView, IndiaCoverageView, PlaceSearchView
 
 urlpatterns = [
+    path("places/search/", PlaceSearchView.as_view(), name="place-search"),
     path("forecast-runs/", ForecastRunListView.as_view(), name="forecast-run-list"),
     path(
         "forecast-runs/<str:run_id>/precipitation/v1/<int:z>/<int:x>/<int:y>.png",

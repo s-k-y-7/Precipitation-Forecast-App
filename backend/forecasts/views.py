@@ -14,10 +14,22 @@ from forecasts.pipeline.grib import ForecastFieldError
 from forecasts.pipeline.grid import GridMetadataError
 from forecasts.pipeline.service import get_forecast_tile, get_interval_tile, get_point_forecast
 from forecasts.pipeline.india import coverage_geometry
+from forecasts.pipeline.places import search_places
 from forecasts.serializers import ForecastRunSerializer
 
 
 logger = logging.getLogger(__name__)
+
+
+class PlaceSearchView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        query = request.query_params.get("q", "")
+        response = Response({"results": search_places(query)})
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 class ForecastRunListView(APIView):

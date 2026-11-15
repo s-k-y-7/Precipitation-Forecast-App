@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchForecastRuns, fetchPointForecast, intervalTileUrl, precipitationTileUrl } from './forecasts';
+import { fetchForecastRuns, fetchPointForecast, intervalTileUrl, precipitationTileUrl, searchPlaces } from './forecasts';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -37,5 +37,14 @@ describe('forecast API helpers', () => {
 
     await expect(fetchPointForecast('ifs-test', 23.8, 90.4)).rejects.toThrow('This forecast currently covers India only.');
     expect(fetch).toHaveBeenCalledWith('/api/forecast-runs/ifs-test/precipitation/point/?lat=23.8&lon=90.4', { signal: undefined });
+  });
+
+  it('queries the India-only place search endpoint with encoded input and cancellation', async () => {
+    const result = { results: [{ id: 1, name: 'New Delhi', admin1: 'Delhi', latitude: 28.6, longitude: 77.2, population: 1000 }] };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => result }));
+    const signal = new AbortController().signal;
+
+    await expect(searchPlaces('New Delhi & NCR', signal)).resolves.toEqual(result);
+    expect(fetch).toHaveBeenCalledWith('/api/places/search/?q=New+Delhi+%26+NCR', { signal });
   });
 });
