@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "precipitation-forecast-backend"
+version = "0.1.0"
+description = "ECMWF IFS precipitation map API"
+requires-python = ">=3.12"
+dependencies = [
+  "Django>=5.2,<6",
+  "djangorestframework>=3.16,<4",
+  "psycopg[binary]>=3.2,<4",
+  "numpy>=2.2",
+  "Pillow>=11",
+  "eccodes>=2.39",
+  "ecmwf-opendata>=0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["config*", "forecasts*"]

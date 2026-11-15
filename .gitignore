@@ -1,0 +1,30 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Forecast source and tile cache
+.forecast-cache/
+forecast-cache/
+*.grib
+*.grib2
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/node_modules/.tmp/
+
+# Local databases and editor files
+*.sqlite3
+.DS_Store
+.idea/
+.vscode/
