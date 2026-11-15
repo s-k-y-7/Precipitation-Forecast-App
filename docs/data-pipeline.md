@@ -1,6 +1,8 @@
 # Forecast Data Pipeline
 
-`refresh_forecast_runs` checks recent 00 and 12 UTC IFS operational runs through the ECMWF Open Data client and retrieves total precipitation (`tp`) at steps +3, +6, …, +24 on the 0.25-degree grid. It requires exactly one GRIB message for every step and validates each message's parameter, units, accumulation interval, initialization, valid time, and grid before saving the catalog and whole-bundle SHA-256 checksum. Old single-step cache files use a separate namespace and cannot be mistaken for a valid bundle.
+`refresh_forecast_runs` checks recent 00 and 12 UTC IFS operational runs through the ECMWF Open Data client and retrieves total precipitation (`tp`) at steps +3, +6, …, +24 on the 0.25-degree grid. It requires exactly one GRIB message for every step and validates each message's parameter, units, accumulation interval, initialization, valid time, and grid before saving the catalog and whole-bundle SHA-256 checksum. Fully validated runs with a live source or tile cache are skipped on subsequent refreshes. Old single-step cache files use a separate namespace and cannot be mistaken for a valid bundle.
+
+Deployment uses the host's cron scheduler to invoke the same management command every three hours in UTC. Each invocation checks a 24-hour lookback window, so unavailable cycles are retried by later invocations. Failures are isolated per candidate; a run is added or updated only after its bundle validates. The frontend polls the run catalog every five minutes.
 
 When a tile or point series is requested, the backend reuses the staged bundle or downloads it once under a run-level file lock. Source bundles expire after `FORECAST_SOURCE_CACHE_TTL_SECONDS`; generated tiles expire after `FORECAST_TILE_CACHE_TTL_SECONDS`. Reads never extend either file's lifetime. The API lists only runs with a live source or tile cache and a fully validated step catalog.
 

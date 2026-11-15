@@ -38,6 +38,12 @@ npm run dev
 
 Open the Vite URL shown in the terminal. Refreshing forecast runs retrieves recent 00/12 UTC IFS `oper` cycles when ECMWF makes all eight steps (+3 through +24h) available. Retrieval may take time and requires network access. Older catalog rows remain hidden until refresh validates a complete bundle. To refresh later, rerun `python manage.py refresh_forecast_runs` from `backend/` with the virtual environment active.
 
+### Automatic forecast updates
+
+For deployment, install the host's existing cron scheduler using [`backend/cron/forecast-refresh.crontab.example`](backend/cron/forecast-refresh.crontab.example). Replace `/srv/precipitation-forecast` with the deployed project path and ensure the cron user can write the configured log file. The entry runs the existing refresh command every three hours in UTC; it sources the project `.env` and uses the backend virtual environment. No scheduler service or Python dependency is added.
+
+The command skips fully validated runs while their source or tile cache is still within its configured lifetime. Failed or unavailable cycles are logged and do not create partial run records; later cron executions recheck the recent 24-hour window. The frontend refreshes the run catalog every five minutes and keeps the user's selected run if it remains available.
+
 ## API
 
 - `GET /api/forecast-runs/` lists runs whose source or tile cache is still available and identifies the latest run.

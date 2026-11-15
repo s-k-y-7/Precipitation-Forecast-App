@@ -2,7 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 
+from forecasts.models import ForecastRun
+from forecasts.pipeline.opendata import run_id_for
 from forecasts.pipeline.service import register_forecast_run
 
 
@@ -30,6 +33,17 @@ class Command(BaseCommand):
 
         registered = 0
         for initialization_time in candidates:
+            run_id = run_id_for(initialization_time)
+            already_available = ForecastRun.objects.filter(
+                run_id=run_id,
+                available_steps_hours=list(settings.FORECAST_STEPS_HOURS),
+            ).filter(
+                Q(source_expires_at__gt=now) | Q(cache_expires_at__gt=now)
+            ).exists()
+            if already_available:
+                registered += 1
+                self.stdout.write(f"Already available {run_id}")
+                continue
             try:
                 run = register_forecast_run(initialization_time)
             except Exception as error:

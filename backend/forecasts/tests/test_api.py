@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,6 +57,7 @@ class ForecastRunApiTests(TestCase):
         self.assertEqual(response.data["runs"][0]["source_provider"], "ecmwf-open-data")
         self.assertEqual(response.data["runs"][0]["source_sha256"], "a" * 64)
         self.assertEqual(response.data["runs"][0]["available_steps_hours"], [3, 6, 9, 12, 15, 18, 21, 24])
+        self.assertEqual(datetime.fromisoformat(response.data["runs"][0]["initialization_time"].replace("Z", "+00:00")).utcoffset(), timedelta(0))
 
     def test_tile_rejects_invalid_coordinates_without_network_access(self):
         response = self.client.get(f"/api/forecast-runs/{self.latest.run_id}/precipitation/v1/2/4/0.png")
@@ -110,6 +111,7 @@ class ForecastRunApiTests(TestCase):
         self.assertEqual(response.data["requested_location"], {"lat": 23.26, "lon": 77.41})
         self.assertEqual(response.data["grid_point"], {"lat": 23.25, "lon": 77.5})
         self.assertEqual([item["end_step_hours"] for item in response.data["intervals"]], [3, 6, 9, 12, 15, 18, 21, 24])
+        self.assertTrue(response.data["intervals"][0]["valid_time"].endswith("+00:00"))
         for item in response.data["intervals"]:
             self.assertAlmostEqual(item["precipitation_mm"], 42.0)
 

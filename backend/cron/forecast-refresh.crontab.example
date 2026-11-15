@@ -1,0 +1,7 @@
+# Replace /srv/precipitation-forecast with the deployed project directory.
+# Ensure /var/log/precipitation-forecast exists and is writable by this cron user.
+PROJECT_ROOT=/srv/precipitation-forecast
+CRON_TZ=UTC
+
+# Retry recent ECMWF cycles every three hours as delayed runs become available.
+30 */3 * * * "$PROJECT_ROOT/backend/cron/refresh_forecast_runs.sh" >> /var/log/precipitation-forecast/refresh.log 2>&1

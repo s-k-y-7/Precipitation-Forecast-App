@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { GeoJSON, MapContainer, Marker, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
 import { CitySearch } from './CitySearch';
 import { fetchForecastRuns, fetchIndiaCoverage, fetchIntervalOverview, fetchPointForecast, intervalTileUrl, type ForecastRun, type IndiaCoverage, type IntervalOverview, type PlaceSearchResult, type PointForecast } from './api/forecasts';
+import { formatRunTimestamp, formatTimelineTimestamp, type DisplayTimezone } from './time';
 
 const basemap = import.meta.env.VITE_BASEMAP_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const steps = [3, 6, 9, 12, 15, 18, 21, 24];
+const RUN_CATALOG_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 export function complete24HourTotal(point: PointForecast | null): number | null {
   if (!point || point.intervals.length !== steps.length) return null;
   if (point.intervals.some((interval, index) =>
@@ -15,13 +17,6 @@ export function complete24HourTotal(point: PointForecast | null): number | null 
   return point.intervals.reduce((total, interval) => total + (interval.precipitation_mm ?? 0), 0);
 }
 
-function formatUtc(value: string) { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(value)) + ' UTC'; }
-function formatTimelineUtc(value: string) {
-  const date = new Date(value);
-  const day = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date);
-  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' }).format(date).toUpperCase();
-  return `${day} · ${time} UTC`;
-}
 function insideRing(point: [number, number], ring: number[][]) {
   const [x, y] = point; let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -61,6 +56,7 @@ export function App() {
   const [runs, setRuns] = useState<ForecastRun[]>([]);
   const [latestRunId, setLatestRunId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [displayTimezone, setDisplayTimezone] = useState<DisplayTimezone>('Asia/Kolkata');
   const [step, setStep] = useState(3);
   const [coverage, setCoverage] = useState<IndiaCoverage | null>(null);
   const [point, setPoint] = useState<PointForecast | null>(null);
@@ -79,23 +75,38 @@ export function App() {
   const [tileError, setTileError] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    fetchForecastRuns(controller.signal)
-      .then((catalog) => {
-        setRuns(catalog.runs);
-        setLatestRunId(catalog.latest_run_id);
-        setSelectedRunId(catalog.latest_run_id);
-        setRunError(null);
-      })
-      .catch((cause: unknown) => {
-        if (cause instanceof Error && cause.name !== 'AbortError') setRunError(cause.message);
-      })
-      .finally(() => setLoading(false));
+    let requestPending = false;
+    const refreshRunCatalog = () => {
+      if (requestPending) return;
+      requestPending = true;
+      fetchForecastRuns(controller.signal)
+        .then((catalog) => {
+          setRuns(catalog.runs);
+          setLatestRunId(catalog.latest_run_id);
+          setSelectedRunId(current => current && catalog.runs.some(run => run.run_id === current)
+            ? current
+            : catalog.latest_run_id);
+          setRunError(null);
+        })
+        .catch((cause: unknown) => {
+          if (cause instanceof Error && cause.name !== 'AbortError') setRunError(cause.message);
+        })
+        .finally(() => {
+          requestPending = false;
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    };
+    refreshRunCatalog();
+    const catalogPoll = window.setInterval(refreshRunCatalog, RUN_CATALOG_REFRESH_INTERVAL_MS);
     fetchIndiaCoverage(controller.signal)
       .then((geometry) => { setCoverage(geometry); setCoverageError(null); })
       .catch((cause: unknown) => {
         if (cause instanceof Error && cause.name !== 'AbortError') setCoverageError(cause.message);
       });
-    return () => controller.abort();
+    return () => {
+      window.clearInterval(catalogPoll);
+      controller.abort();
+    };
   }, []);
   const selectedRun = runs.find(run => run.run_id === selectedRunId);
   const interval = point?.intervals.find(item => item.end_step_hours === step);
@@ -164,8 +175,9 @@ export function App() {
     <header className="topbar"><div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48" focusable="false"><path d="M14 29.5a7.5 7.5 0 0 1 .9-15 10.5 10.5 0 0 1 19.8 2.8A6.4 6.4 0 0 1 34 30H14Z"/><path d="m18 35-2 4m12-4-2 4m12-4-2 4"/></svg></span><div><p className="eyebrow">ECMWF IFS · India</p><h1>Precipitation Forecast</h1></div></div>
       <div className="topbar-controls"><CitySearch onSelect={chooseCity}/>
       <label className="run-control"><span>Forecast run</span><select aria-label="Forecast run" value={selectedRunId ?? ''} onChange={event => { setSelectedRunId(event.target.value); setPoint(null); setSelection(null); setSelectedCityName(null); setLocationError(null); setPointError(null); setTileError(false); }} disabled={loading || runs.length === 0}>
-        {runs.length === 0 && <option value="">{loading ? 'Loading forecast runs…' : runError ? 'Forecast runs unavailable' : 'No validated runs available'}</option>}{runs.map(run => <option key={run.run_id} value={run.run_id}>{run.run_id === latestRunId ? 'Latest forecast run' : formatUtc(run.initialization_time)}</option>)}
-      </select></label></div></header>
+        {runs.length === 0 && <option value="">{loading ? 'Loading forecast runs…' : runError ? 'Forecast runs unavailable' : 'No validated runs available'}</option>}{runs.map(run => <option key={run.run_id} value={run.run_id}>{run.run_id === latestRunId ? 'Latest forecast run' : formatRunTimestamp(run.initialization_time, displayTimezone)}</option>)}
+      </select></label>
+      <div className="timezone-control"><span className="timezone-label">Timezone</span><div className="timezone-toggle" role="group" aria-label="Display timezone"><button type="button" aria-pressed={displayTimezone === 'Asia/Kolkata'} onClick={() => setDisplayTimezone('Asia/Kolkata')}>IST</button><button type="button" aria-pressed={displayTimezone === 'UTC'} onClick={() => setDisplayTimezone('UTC')}>UTC</button></div></div></div></header>
     <div className="forecast-layout">
       <div className="map-column">
     <section className="map-frame" aria-label="Interactive precipitation forecast map">
@@ -185,7 +197,7 @@ export function App() {
       {tileError && <div className="tile-error" role="alert">Forecast tiles could not be loaded. The run may have expired or its source is temporarily unavailable.</div>}
       </div>
     </section>
-      {selectedRun && <div className="timeline-card"><div className="timeline-head"><h2>Forecast Timeline</h2><span>{formatTimelineUtc(new Date(new Date(selectedRun.initialization_time).getTime() + step * 3600000).toISOString())}</span></div><div className="timeline-steps">{selectedRunSteps.map(item => <button type="button" aria-pressed={step === item} key={item} onClick={() => setStep(item)}>+{item}h</button>)}</div></div>}
+      {selectedRun && <div className="timeline-card"><div className="timeline-head"><h2>Forecast Timeline</h2><span>{formatTimelineTimestamp(new Date(new Date(selectedRun.initialization_time).getTime() + step * 3600000).toISOString(), displayTimezone)}</span></div><div className="timeline-steps">{selectedRunSteps.map(item => <button type="button" aria-pressed={step === item} key={item} onClick={() => setStep(item)}>+{item}h</button>)}</div></div>}
       </div>
       <aside className={`forecast-sidebar${selection ? ' has-selection' : ''}`} aria-label={selection ? 'Location forecast' : 'India-wide forecast overview'} aria-live="polite">
         {!selection && <section className="sidebar-section overview-section">
@@ -202,7 +214,7 @@ export function App() {
           {selection ? <>
             <div className="location-summary"><strong>{selectedCityName ?? 'Selected map location'}</strong><span>{selection[0].toFixed(4)}°, {selection[1].toFixed(4)}°</span>{point && <small>Nearest ECMWF grid point {point.grid_point.lat.toFixed(2)}°, {point.grid_point.lon.toFixed(2)}°</small>}</div>
             {pointLoading && <p role="status">Loading point forecast…</p>}
-            {point && !pointLoading && <><div className="selected-interval"><strong>{interval?.precipitation_mm == null ? 'Unavailable' : `${interval.precipitation_mm.toFixed(2)} mm`}</strong><small>+{step - 3} to +{step}h precipitation</small></div>{pointTotal !== null && <p className="point-total">24-hour total <strong>{pointTotal.toFixed(2)} mm</strong></p>}<div className="point-series">{point.intervals.map(item => <button type="button" key={item.end_step_hours} onClick={() => setStep(item.end_step_hours)} aria-pressed={item.end_step_hours === step} title={`+${item.end_step_hours}h: ${item.precipitation_mm == null ? 'unavailable' : item.precipitation_mm.toFixed(2) + ' mm'}`}><span>{item.precipitation_mm == null ? '—' : item.precipitation_mm.toFixed(1)}</span><i style={{ height: `${Math.max(2, Math.min(48, (item.precipitation_mm ?? 0) * 2))}px` }}/><small>+{item.end_step_hours}</small></button>)}</div></>}
+            {point && !pointLoading && <><div className="selected-interval"><strong>{interval?.precipitation_mm == null ? 'Unavailable' : `${interval.precipitation_mm.toFixed(2)} mm`}</strong><small>+{step - 3} to +{step}h precipitation · Valid {interval ? formatTimelineTimestamp(interval.valid_time, displayTimezone) : ''}</small></div>{pointTotal !== null && <p className="point-total">24-hour total <strong>{pointTotal.toFixed(2)} mm</strong></p>}<div className="point-series">{point.intervals.map(item => <button type="button" key={item.end_step_hours} onClick={() => setStep(item.end_step_hours)} aria-pressed={item.end_step_hours === step} title={`+${item.end_step_hours}h · ${formatTimelineTimestamp(item.valid_time, displayTimezone)}: ${item.precipitation_mm == null ? 'unavailable' : item.precipitation_mm.toFixed(2) + ' mm'}`}><span>{item.precipitation_mm == null ? '—' : item.precipitation_mm.toFixed(1)}</span><i style={{ height: `${Math.max(2, Math.min(48, (item.precipitation_mm ?? 0) * 2))}px` }}/><small>+{item.end_step_hours}</small></button>)}</div></>}
             {!point && !pointLoading && <p className="point-hint">{pointError ?? 'Forecast values are not available for this location.'}</p>}
           </> : <p className="location-prompt">Search for a city or click on the map to see point forecast.</p>}
         </section>
