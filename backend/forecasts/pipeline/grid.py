@@ -29,8 +29,8 @@ class GridMetadata:
 
 INDIA_BOUNDS = (68.0, 6.0, 97.5, 37.5)  # west, south, east, north
 TILE_SIZE = 256
-PROCESSING_VERSION = "v1"
-STYLE_VERSION = "rain-v1"
+PROCESSING_VERSION = "interval-v2-india-mask-v1"
+STYLE_VERSION = "rain-mm-3h-v2"
 
 
 def _number(metadata: dict, key: str) -> float:
@@ -91,6 +91,7 @@ def sample_xyz_tile(
     x: int,
     y: int,
     bounds: tuple[float, float, float, float] = INDIA_BOUNDS,
+    input_to_mm: float | None = None,
 ) -> np.ndarray:
     """Nearest-neighbour sample a forecast grid into an XYZ Web Mercator tile."""
     if not 0 <= z <= 10:
@@ -116,8 +117,11 @@ def sample_xyz_tile(
     column = np.rint(relative_longitude / grid.longitude_increment).astype(np.int64) % grid.width
     row = np.rint((grid.first_latitude - lat_mesh) / grid.latitude_increment).astype(np.int64)
     safe_row = np.clip(row, 0, grid.height - 1)
-    sampled = source[safe_row, column] * grid.precipitation_to_mm
-    sampled = np.where(inside & np.isfinite(sampled), sampled, np.nan)
+    sampled = source[safe_row, column] * (grid.precipitation_to_mm if input_to_mm is None else input_to_mm)
+    from forecasts.pipeline.india import india_tile_mask
+
+    india_mask = np.asarray(india_tile_mask(z, x, y), dtype=np.uint8) > 0
+    sampled = np.where(inside & india_mask & np.isfinite(sampled), sampled, np.nan)
     return sampled
 
 
@@ -145,3 +149,17 @@ def render_precipitation_tile(values_mm: np.ndarray) -> bytes:
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     return output.getvalue()
+
+
+def interval_precipitation(previous: np.ndarray | None, current: np.ndarray, previous_error_m: float = 0.0,
+                           current_error_m: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
+    """Difference cumulative fields and zero values within their GRIB packing precision."""
+    cumulative = np.asarray(current, dtype=np.float64)
+    before = np.zeros_like(cumulative) if previous is None else np.asarray(previous, dtype=np.float64)
+    delta = (cumulative - before) * 1000.0
+    tolerance_mm = (abs(previous_error_m) + abs(current_error_m)) * 1000.0
+    valid = np.isfinite(delta) & (delta >= -tolerance_mm)
+    below_precision = valid & (np.abs(delta) <= tolerance_mm)
+    delta[below_precision] = 0.0
+    delta[~valid] = np.nan
+    return delta, valid

@@ -7,10 +7,10 @@ from pathlib import Path
 
 from django.test import SimpleTestCase, override_settings
 
-from forecasts.pipeline.cache import get_or_create_source, get_or_create_tile
+from forecasts.pipeline.cache import cached_tile, get_or_create_source, get_or_create_tile
 
 
-@override_settings(FORECAST_CACHE_TTL_SECONDS=60)
+@override_settings(FORECAST_SOURCE_CACHE_TTL_SECONDS=60, FORECAST_TILE_CACHE_TTL_SECONDS=60)
 class FileCacheTests(SimpleTestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -83,3 +83,25 @@ class FileCacheTests(SimpleTestCase):
 
         self.assertEqual(len(calls), 2)
         self.assertNotEqual(first[1], second[1])
+
+    @override_settings(FORECAST_TILE_CACHE_TTL_SECONDS=120)
+    def test_source_expiry_does_not_expire_or_extend_a_tile(self):
+        source_calls = []
+
+        def downloader(target: Path):
+            source_calls.append(True)
+            target.write_bytes(f"bundle-{len(source_calls)}".encode())
+
+        source, _, _ = get_or_create_source("run-independent-ttl", downloader)
+        tile, _ = get_or_create_tile("b" * 64, lambda: b"\x89PNG\r\n\x1a\nfixture")
+        old = time.time() - 70
+        os.utime(source, (old, old))
+        os.utime(tile, (old, old))
+
+        renewed_source = get_or_create_source("run-independent-ttl", downloader)
+        still_cached_tile = cached_tile("b" * 64)
+
+        self.assertTrue(renewed_source[2])
+        self.assertEqual(len(source_calls), 2)
+        self.assertEqual(still_cached_tile, tile)
+        self.assertEqual(int(tile.stat().st_mtime), int(old))

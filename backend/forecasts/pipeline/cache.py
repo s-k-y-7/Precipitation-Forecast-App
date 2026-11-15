@@ -30,7 +30,7 @@ def _token(value: str) -> str:
 
 
 def source_path(run_id: str) -> Path:
-    return cache_root() / "sources" / f"{_token(run_id)}.grib2"
+    return cache_root() / "sources" / "step-bundle-v1" / f"{_token(run_id)}.grib2"
 
 
 def tile_path(key: str) -> Path:
@@ -52,7 +52,7 @@ def _fresh(path: Path, ttl_seconds: int) -> bool:
 def cached_tile(key: str) -> Path | None:
     path = tile_path(key)
     with _file_lock(path.with_suffix(".lock")):
-        return path if _fresh(path, settings.FORECAST_CACHE_TTL_SECONDS) else None
+        return path if _fresh(path, settings.FORECAST_TILE_CACHE_TTL_SECONDS) else None
 
 
 @contextmanager
@@ -69,7 +69,7 @@ def _file_lock(path: Path) -> Iterator[None]:
 def get_or_create_source(run_id: str, downloader: Callable[[Path], None]) -> tuple[Path, str, bool]:
     """Return (path, SHA-256, was_downloaded), deduplicating process workers."""
     destination = source_path(run_id)
-    ttl = settings.FORECAST_CACHE_TTL_SECONDS
+    ttl = settings.FORECAST_SOURCE_CACHE_TTL_SECONDS
     lock = destination.with_suffix(".lock")
     with _file_lock(lock):
         if _fresh(destination, ttl):
@@ -89,10 +89,17 @@ def get_or_create_source(run_id: str, downloader: Callable[[Path], None]) -> tup
     return destination, _sha256(destination), True
 
 
+def invalidate_source(run_id: str) -> None:
+    """Remove a source bundle that failed semantic GRIB validation."""
+    destination = source_path(run_id)
+    with _file_lock(destination.with_suffix(".lock")):
+        destination.unlink(missing_ok=True)
+
+
 def get_or_create_tile(key: str, renderer: Callable[[], bytes]) -> tuple[Path, bool]:
     """Return a cached tile, generating it atomically once across workers."""
     destination = tile_path(key)
-    ttl = settings.FORECAST_CACHE_TTL_SECONDS
+    ttl = settings.FORECAST_TILE_CACHE_TTL_SECONDS
     lock = destination.with_suffix(".lock")
     with _file_lock(lock):
         if _fresh(destination, ttl):
@@ -135,16 +142,17 @@ def prune_expired_cache(force: bool = False) -> int:
             return 0
         root = cache_root()
         removed = 0
-        ttl = settings.FORECAST_CACHE_TTL_SECONDS
-        for folder in (root / "sources", root / "tiles"):
-            if not folder.exists():
-                continue
-            for path in folder.rglob("*"):
-                try:
-                    if path.suffix in {".grib2", ".png"} and path.is_file() and now - path.stat().st_mtime > ttl:
-                        path.unlink(missing_ok=True)
-                        removed += 1
-                except FileNotFoundError:
-                    continue
+        for folder, suffix, ttl in (
+            (root / "sources", ".grib2", settings.FORECAST_SOURCE_CACHE_TTL_SECONDS),
+            (root / "tiles", ".png", settings.FORECAST_TILE_CACHE_TTL_SECONDS),
+        ):
+            if folder.exists():
+                for path in folder.rglob("*"):
+                    try:
+                        if path.suffix == suffix and path.is_file() and now - path.stat().st_mtime > ttl:
+                            path.unlink(missing_ok=True)
+                            removed += 1
+                    except FileNotFoundError:
+                        continue
         _last_prune = now
         return removed

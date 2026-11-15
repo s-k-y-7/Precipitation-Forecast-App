@@ -44,8 +44,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 FORECAST_MODEL = os.environ.get("FORECAST_MODEL", "ifs")
 FORECAST_STREAM = os.environ.get("FORECAST_STREAM", "oper")
 FORECAST_RESOLUTION = os.environ.get("FORECAST_RESOLUTION", "0p25")
-FORECAST_LEAD_HOURS = int(os.environ.get("FORECAST_LEAD_HOURS", "24"))
-FORECAST_CACHE_TTL_SECONDS = int(os.environ.get("FORECAST_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
+FORECAST_SOURCE_CACHE_TTL_SECONDS = int(os.environ.get("FORECAST_SOURCE_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
+FORECAST_TILE_CACHE_TTL_SECONDS = int(os.environ.get("FORECAST_TILE_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
+FORECAST_STEPS_HOURS = tuple(range(3, 25, 3))
 FORECAST_CACHE_DIR = os.environ.get(
     "FORECAST_CACHE_DIR", str(Path(tempfile.gettempdir()) / "precipitation-forecast-cache")
 )

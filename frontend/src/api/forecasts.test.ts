@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchForecastRuns, precipitationTileUrl } from './forecasts';
+import { fetchForecastRuns, fetchPointForecast, intervalTileUrl, precipitationTileUrl } from './forecasts';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -21,5 +21,21 @@ describe('forecast API helpers', () => {
     expect(precipitationTileUrl('ifs-oper-20261114T00Z-t24')).toBe(
       '/api/forecast-runs/ifs-oper-20261114T00Z-t24/precipitation/v1/{z}/{x}/{y}.png',
     );
+  });
+
+  it('creates a time-step scoped interval tile url', () => {
+    expect(intervalTileUrl('ifs-oper-test', 12)).toBe(
+      '/api/forecast-runs/ifs-oper-test/precipitation/v2/12/{z}/{x}/{y}.png',
+    );
+  });
+
+  it('requests a real location series and surfaces India-only errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ detail: 'This forecast currently covers India only.' }),
+    }));
+
+    await expect(fetchPointForecast('ifs-test', 23.8, 90.4)).rejects.toThrow('This forecast currently covers India only.');
+    expect(fetch).toHaveBeenCalledWith('/api/forecast-runs/ifs-test/precipitation/point/?lat=23.8&lon=90.4', { signal: undefined });
   });
 });

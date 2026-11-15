@@ -8,6 +8,6 @@ class ForecastRunSerializer(serializers.ModelSerializer):
         model = ForecastRun
         fields = (
             "run_id", "model", "stream", "resolution", "parameter",
-            "initialization_time", "valid_time", "lead_hours", "source_provider",
+            "initialization_time", "valid_time", "lead_hours", "available_steps_hours", "source_provider",
             "source_sha256", "grid_metadata",
         )

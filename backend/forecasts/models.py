@@ -12,6 +12,7 @@ class ForecastRun(models.Model):
     initialization_time = models.DateTimeField()
     valid_time = models.DateTimeField()
     lead_hours = models.PositiveSmallIntegerField()
+    available_steps_hours = models.JSONField(default=list)
     source_provider = models.CharField(max_length=32, default="ecmwf-open-data")
     source_sha256 = models.CharField(max_length=64)
     source_expires_at = models.DateTimeField()

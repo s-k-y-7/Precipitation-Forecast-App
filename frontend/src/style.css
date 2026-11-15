@@ -37,6 +37,26 @@ h1 { margin: 0; font: 700 19px/1.2 'Manrope', sans-serif; letter-spacing: -.035e
 .tile-error { position: absolute; z-index: 600; top: 20px; left: 50%; width: min(390px, calc(100% - 40px)); padding: 11px 14px; transform: translateX(-50%); border: 1px solid #f1c5bb; border-radius: 10px; background: #fff8f5; box-shadow: 0 8px 25px #19374717; color: #963b2e; font-size: 12px; text-align: center; pointer-events: none; }
 .run-caption { position: absolute; z-index: 500; bottom: 26px; left: 20px; max-width: calc(100% - 420px); color: #526e7c; font-size: 10px; text-shadow: 0 1px 2px white; pointer-events: none; }
 .leaflet-control-attribution { font-size: 10px !important; }
+.timeline-card, .point-card { position: absolute; z-index: 500; left: 20px; width: min(390px, calc(100% - 40px)); padding: 13px 15px; border: 1px solid #e1eaed; border-radius: 12px; background: #ffffffed; box-shadow: 0 8px 30px #19374717; }
+.timeline-card { bottom: 22px; }
+.timeline-head, .point-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.timeline-head strong, .point-card-heading strong { color: #18394a; font-size: 12px; }
+.timeline-head span, .point-card-heading > span { color: #69818e; font-size: 10px; }
+.timeline-card input { width: 100%; margin: 12px 0 4px; accent-color: #277d8f; }
+.timeline-steps { display: flex; justify-content: space-between; gap: 3px; }
+.timeline-steps button { border: 0; padding: 4px 5px; border-radius: 6px; color: #587382; background: transparent; font-size: 10px; cursor: pointer; }
+.timeline-steps button[aria-pressed="true"], .point-series button[aria-pressed="true"] { color: #fff; background: #267b8c; }
+.point-card { top: 190px; left: auto; right: 20px; width: min(270px, calc(100% - 40px)); }
+.point-card .eyebrow { margin-bottom: 4px; }
+.grid-point { display: block; margin-top: 3px; color: #718792; font-size: 9px; }
+.point-hint, .point-card > p { margin: 12px 0 0; color: #607a88; font-size: 11px; line-height: 1.45; }
+.point-current { color: #173747 !important; font: 700 23px 'Manrope', sans-serif; }
+.point-current small { color: #708793; font: 500 10px 'DM Sans', sans-serif; }
+.point-series { display: grid; grid-template-columns: repeat(8, 1fr); align-items: end; gap: 2px; margin-top: 10px; }
+.point-series button { display: flex; min-width: 0; height: 86px; flex-direction: column; align-items: center; justify-content: end; gap: 3px; border: 0; border-radius: 6px; padding: 4px 1px; color: #42606e; background: transparent; cursor: pointer; }
+.point-series button span, .point-series button small { font-size: 8px; }
+.point-series button i { display: block; width: 10px; min-height: 2px; border-radius: 4px 4px 1px 1px; background: #3990a2; }
+.point-series button[aria-pressed="true"] i { background: #fff; }
 
 @media (max-width: 640px) {
   .app-shell { padding: 12px; }
@@ -46,5 +66,7 @@ h1 { margin: 0; font: 700 19px/1.2 'Manrope', sans-serif; letter-spacing: -.035e
   .map-heading { top: 12px; left: 12px; padding: 13px 14px; }
   .map-heading h2 { font-size: 16px; }
   .legend { top: auto; right: 12px; bottom: 14px; }
-  .run-caption { bottom: 118px; left: 12px; max-width: calc(100% - 24px); }
+  .point-card { top: auto; right: 12px; bottom: 172px; width: min(260px, calc(100% - 24px)); }
+  .timeline-card { left: 12px; bottom: 12px; width: min(390px, calc(100% - 24px)); }
+  .run-caption { bottom: 130px; left: 12px; max-width: calc(100% - 24px); }
 }

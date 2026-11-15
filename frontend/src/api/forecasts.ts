@@ -7,6 +7,7 @@ export type ForecastRun = {
   initialization_time: string;
   valid_time: string;
   lead_hours: number;
+  available_steps_hours: number[];
   source_provider: string;
   source_sha256: string;
   grid_metadata: Record<string, string | number>;
@@ -25,4 +26,30 @@ export async function fetchForecastRuns(signal?: AbortSignal): Promise<ForecastR
 
 export function precipitationTileUrl(runId: string): string {
   return `/api/forecast-runs/${encodeURIComponent(runId)}/precipitation/v1/{z}/{x}/{y}.png`;
+}
+
+export type IndiaCoverage = GeoJSON.FeatureCollection | GeoJSON.Feature | GeoJSON.Geometry;
+export type PointForecast = {
+  run_id: string;
+  requested_location: { lat: number; lon: number };
+  grid_point: { lat: number; lon: number };
+  intervals: { start_step_hours: number; end_step_hours: number; valid_time: string; precipitation_mm: number | null }[];
+};
+
+export async function fetchIndiaCoverage(signal?: AbortSignal): Promise<IndiaCoverage> {
+  const response = await fetch('/api/coverage/india/', { signal });
+  if (!response.ok) throw new Error('India forecast coverage could not be loaded.');
+  return response.json() as Promise<IndiaCoverage>;
+}
+
+export async function fetchPointForecast(runId: string, lat: number, lon: number, signal?: AbortSignal): Promise<PointForecast> {
+  const query = new URLSearchParams({ lat: String(lat), lon: String(lon) });
+  const response = await fetch(`/api/forecast-runs/${encodeURIComponent(runId)}/precipitation/point/?${query}`, { signal });
+  const result = await response.json() as PointForecast | { detail?: string };
+  if (!response.ok) throw new Error('detail' in result ? result.detail || 'Point forecast failed.' : 'Point forecast failed.');
+  return result as PointForecast;
+}
+
+export function intervalTileUrl(runId: string, step: number): string {
+  return `/api/forecast-runs/${encodeURIComponent(runId)}/precipitation/v2/${step}/{z}/{x}/{y}.png`;
 }

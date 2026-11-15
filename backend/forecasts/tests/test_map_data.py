@@ -12,6 +12,13 @@ from forecasts.pipeline.grid import (
 
 
 class MapDataTests(SimpleTestCase):
+    def test_india_geometry_distinguishes_inside_and_outside_locations(self):
+        from forecasts.pipeline.india import is_inside_india
+
+        self.assertTrue(is_inside_india(77.209, 28.614))
+        self.assertFalse(is_inside_india(90.412, 23.81))
+        self.assertFalse(is_inside_india(79.861, 6.927))
+
     def test_sampling_honors_the_grib_longitude_origin(self):
         grid = GridMetadata(4, 3, 180.0, 90.0, 90.0, 90.0, 1000.0)
         values = np.arange(12, dtype=np.float64)
@@ -22,6 +29,9 @@ class MapDataTests(SimpleTestCase):
         pixel_y = int(world_y * 4 * 256) - 1 * 256
 
         self.assertEqual(tile[pixel_y, pixel_x], 7000.0)
+
+        interval_tile = sample_xyz_tile(values, grid, 2, 2, 1, input_to_mm=1.0)
+        self.assertEqual(interval_tile[pixel_y, pixel_x], 7.0)
 
     def test_sample_rejects_mismatched_grid_shape(self):
         grid = GridMetadata(4, 3, 0.0, 90.0, 90.0, 90.0, 1000.0)

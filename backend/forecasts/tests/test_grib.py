@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from django.test import SimpleTestCase
 import numpy as np
 
-from forecasts.pipeline.grib import ForecastFieldError, read_precipitation_field
+from forecasts.pipeline.grib import ForecastFieldError, read_precipitation_bundle, read_precipitation_field
 
 
 class GribDecodingTests(SimpleTestCase):
@@ -61,3 +61,36 @@ class GribDecodingTests(SimpleTestCase):
 
             with self.assertRaises(ForecastFieldError):
                 read_precipitation_field(path, 24, datetime(2026, 11, 14, 12, tzinfo=timezone.utc))
+
+    def test_decodes_and_checks_every_step_in_a_bundle(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "bundle.grib2"
+            ec = self.eccodes
+            with path.open("wb") as output:
+                for step in (3, 6, 9, 12, 15, 18, 21, 24):
+                    handle = ec.codes_grib_new_from_samples("regular_ll_sfc_grib2")
+                    try:
+                        for key, value in (
+                            ("shortName", "tp"), ("Ni", 1440), ("Nj", 721),
+                            ("latitudeOfFirstGridPointInDegrees", 90.0),
+                            ("longitudeOfFirstGridPointInDegrees", 0.0),
+                            ("iDirectionIncrementInDegrees", 0.25), ("jDirectionIncrementInDegrees", 0.25),
+                            ("dataDate", 20261114), ("dataTime", 0), ("startStep", 0),
+                            ("endStep", step), ("stepType", "accum"),
+                        ):
+                            ec.codes_set(handle, key, value)
+                        ec.codes_set_values(handle, np.full(1440 * 721, step / 1000, dtype=np.float64))
+                        ec.codes_write(handle, output)
+                    finally:
+                        ec.codes_release(handle)
+            fields = read_precipitation_bundle(path, (3, 6, 9, 12, 15, 18, 21, 24), datetime(2026, 11, 14, tzinfo=timezone.utc))
+
+        self.assertEqual(sorted(fields), [3, 6, 9, 12, 15, 18, 21, 24])
+        self.assertEqual(fields[24].metadata["endStep"], 24)
+
+    def test_rejects_incomplete_step_bundle(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "bundle.grib2"
+            self.make_fixture(path)
+            with self.assertRaises(ForecastFieldError):
+                read_precipitation_bundle(path, (3, 6, 9, 12, 15, 18, 21, 24), datetime(2026, 11, 14, tzinfo=timezone.utc))
