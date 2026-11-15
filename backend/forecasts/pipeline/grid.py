@@ -163,3 +163,29 @@ def interval_precipitation(previous: np.ndarray | None, current: np.ndarray, pre
     delta[below_precision] = 0.0
     delta[~valid] = np.nan
     return delta, valid
+
+
+def summarize_interval_grid(previous: np.ndarray | None, current: np.ndarray, grid: GridMetadata,
+                            previous_error_m: float = 0.0, current_error_m: float = 0.0) -> dict:
+    """Summarize the maximum validated interval value at India grid-cell centers."""
+    from forecasts.pipeline.india import india_grid_mask
+
+    amount_mm, valid = interval_precipitation(
+        previous, current, previous_error_m=previous_error_m, current_error_m=current_error_m
+    )
+    valid_inside = np.asarray(valid, dtype=bool).reshape((grid.height, grid.width)) & india_grid_mask(grid)
+    valid_indices = np.flatnonzero(valid_inside.ravel())
+    if not len(valid_indices):
+        return {"max_precipitation_mm": None, "max_grid_point": None, "valid_grid_points": 0}
+
+    flattened_amounts = np.asarray(amount_mm, dtype=np.float64).reshape(-1)
+    maximum_index = valid_indices[np.argmax(flattened_amounts[valid_indices])]
+    row, column = divmod(int(maximum_index), grid.width)
+    return {
+        "max_precipitation_mm": float(flattened_amounts[maximum_index]),
+        "max_grid_point": {
+            "lat": grid.first_latitude - row * grid.latitude_increment,
+            "lon": (grid.first_longitude + column * grid.longitude_increment + 180.0) % 360.0 - 180.0,
+        },
+        "valid_grid_points": int(len(valid_indices)),
+    }

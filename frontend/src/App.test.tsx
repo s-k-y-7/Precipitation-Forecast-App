@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
+import type { PointForecast } from './api/forecasts';
 
 const mapClick = vi.hoisted<{ current?: (event: { latlng: { lat: number; lng: number } }) => void }>(() => ({}));
 const mapFlyTo = vi.hoisted(() => vi.fn());
@@ -21,7 +22,7 @@ vi.mock('react-leaflet', async () => {
   };
 });
 
-import { App } from './App';
+import { App, complete24HourTotal } from './App';
 
 const indiaGeometry = {
   type: 'FeatureCollection',
@@ -96,6 +97,10 @@ describe('forecast app failure handling', () => {
         return Promise.resolve({ ok: true, json: async () => ({ latest_run_id: run.run_id, runs: [run] }) } as Response);
       }
       if (url === '/api/coverage/india/') return Promise.resolve({ ok: true, json: async () => indiaGeometry } as Response);
+      if (url.includes('/precipitation/summary/')) return Promise.resolve({ ok: true, json: async () => ({
+        run_id: run.run_id, start_step_hours: 0, end_step_hours: 3, max_precipitation_mm: 12.5,
+        max_grid_point: { lat: 23.25, lon: 77.5 }, valid_grid_points: 1000,
+      }) } as Response);
       return Promise.resolve({ ok: true, json: async () => pointForecast } as Response);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -106,12 +111,13 @@ describe('forecast app failure handling', () => {
       mapClick.current?.({ latlng: { lat: 23.26, lng: 77.41 } });
     });
 
-    expect(await screen.findByText('Selected 23.26°, 77.41°')).toBeInTheDocument();
+    expect(await screen.findByText('Coordinates 23.2600°, 77.4100°')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/forecast-runs/ifs-oper-test/precipitation/point/?lat=23.26&lon=77.41',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(screen.getByText('1.25 mm')).toBeInTheDocument();
+    expect(screen.getAllByText('1.25 mm').length).toBeGreaterThan(0);
+    expect(screen.getByText(/24-hour total/)).toHaveTextContent('1.25 mm');
   });
 
   it('searches a city, flies the map to it, and loads its point forecast', async () => {
@@ -133,6 +139,10 @@ describe('forecast app failure handling', () => {
       if (url === '/api/forecast-runs/') return Promise.resolve({ ok: true, json: async () => ({ latest_run_id: run.run_id, runs: [run] }) } as Response);
       if (url === '/api/coverage/india/') return Promise.resolve({ ok: true, json: async () => indiaGeometry } as Response);
       if (url === '/api/places/search/?q=bhopal') return Promise.resolve({ ok: true, json: async () => ({ results: [city] }) } as Response);
+      if (url.includes('/precipitation/summary/')) return Promise.resolve({ ok: true, json: async () => ({
+        run_id: run.run_id, start_step_hours: 0, end_step_hours: 3, max_precipitation_mm: 12.5,
+        max_grid_point: { lat: 23.25, lon: 77.5 }, valid_grid_points: 1000,
+      }) } as Response);
       return Promise.resolve({ ok: true, json: async () => forecast } as Response);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -142,10 +152,58 @@ describe('forecast app failure handling', () => {
     fireEvent.click(await screen.findByRole('option', { name: /Bhopal/ }));
 
     expect(mapFlyTo).toHaveBeenCalledWith([23.26, 77.41], 8, { duration: 0.7 });
-    expect(await screen.findByText('Selected 23.26°, 77.41°')).toBeInTheDocument();
+    expect(await screen.findByText('Bhopal')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/forecast-runs/ifs-oper-test/precipitation/point/?lat=23.26&lon=77.41',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+
+  it('shows an India grid overview and updates it with the selected timeline interval', async () => {
+    const run = {
+      run_id: 'ifs-oper-test', model: 'ifs', stream: 'oper', resolution: '0p25', parameter: 'tp',
+      initialization_time: '2026-11-14T12:00:00Z', valid_time: '2026-11-15T12:00:00Z', lead_hours: 24,
+      available_steps_hours: [3, 6, 9, 12, 15, 18, 21, 24], source_provider: 'ecmwf-open-data',
+      source_sha256: 'f'.repeat(64), grid_metadata: {},
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/forecast-runs/') return Promise.resolve({ ok: true, json: async () => ({ latest_run_id: run.run_id, runs: [run] }) } as Response);
+      if (url === '/api/coverage/india/') return Promise.resolve({ ok: true, json: async () => indiaGeometry } as Response);
+      if (url.includes('/precipitation/summary/')) {
+        const endStep = Number(url.match(/summary\/(\d+)\/$/)?.[1]);
+        return Promise.resolve({ ok: true, json: async () => ({
+          run_id: run.run_id, start_step_hours: endStep - 3, end_step_hours: endStep,
+          max_precipitation_mm: endStep === 3 ? 5 : 10,
+          max_grid_point: { lat: 23.25, lon: 77.5 }, valid_grid_points: 1000,
+        }) } as Response);
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+
+    expect(await screen.findByText('5.00 mm')).toBeInTheDocument();
+    expect(screen.getAllByText('+0 to +3 hours').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '+6h' }));
+
+    expect(await screen.findByText('10.00 mm')).toBeInTheDocument();
+    expect(screen.getAllByText('+3 to +6 hours').length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/forecast-runs/ifs-oper-test/precipitation/summary/6/',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('shows a 24-hour point total only when every step is valid and ordered', () => {
+    const point: PointForecast = {
+      run_id: 'ifs-test', requested_location: { lat: 23, lon: 77 }, grid_point: { lat: 23, lon: 77 },
+      intervals: [3, 6, 9, 12, 15, 18, 21, 24].map((end_step_hours, index) => ({
+        start_step_hours: end_step_hours - 3, end_step_hours, valid_time: '', precipitation_mm: index + 1,
+      })),
+    };
+    expect(complete24HourTotal(point)).toBe(36);
+    point.intervals[3].precipitation_mm = null;
+    expect(complete24HourTotal(point)).toBeNull();
   });
 });

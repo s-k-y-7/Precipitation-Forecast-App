@@ -12,7 +12,7 @@ from django.utils import timezone as django_timezone
 from forecasts.models import ForecastRun
 from forecasts.pipeline.cache import cached_tile, get_or_create_source, get_or_create_tile, invalidate_source, prune_expired_cache
 from forecasts.pipeline.grib import ForecastFieldError, read_precipitation_bundle
-from forecasts.pipeline.grid import PROCESSING_VERSION, STYLE_VERSION, INDIA_BOUNDS, cache_key, interval_precipitation, render_precipitation_tile, sample_xyz_tile
+from forecasts.pipeline.grid import PROCESSING_VERSION, STYLE_VERSION, INDIA_BOUNDS, cache_key, interval_precipitation, render_precipitation_tile, sample_xyz_tile, summarize_interval_grid
 from forecasts.pipeline.india import BOUNDARY_VERSION, is_inside_india
 from forecasts.pipeline.opendata import download_ifs_precipitation
 
@@ -100,6 +100,35 @@ def get_interval_tile(run: ForecastRun, step: int, z: int, x: int, y: int) -> tu
     if step not in run.available_steps_hours:
         raise ValueError("Forecast step is unavailable for this run")
     return _tile(run, step, z, x, y)
+
+
+@lru_cache(maxsize=32)
+def _cached_interval_overview(path_string: str, modified_ns: int, initialization_iso: str,
+                              source_sha256: str, step: int, boundary_version: str,
+                              processing_version: str) -> dict:
+    del modified_ns, source_sha256, boundary_version, processing_version
+    initialization = datetime.fromisoformat(initialization_iso)
+    fields = _read_fields(path_string, Path(path_string).stat().st_mtime_ns, initialization_iso)
+    current = fields[step]
+    previous = None if step == settings.FORECAST_STEPS_HOURS[0] else fields[step - 3]
+    return summarize_interval_grid(
+        None if previous is None else previous.values,
+        current.values,
+        current.grid,
+        0.0 if previous is None else float(previous.metadata["packingError"]),
+        float(current.metadata["packingError"]),
+    )
+
+
+def get_interval_overview(run: ForecastRun, step: int) -> dict:
+    if step not in run.available_steps_hours:
+        raise ValueError("Forecast step is unavailable for this run")
+    path, digest = _source_for_run(run)
+    summary = _cached_interval_overview(
+        str(path), path.stat().st_mtime_ns, run.initialization_time.isoformat(), digest, step,
+        BOUNDARY_VERSION, PROCESSING_VERSION,
+    )
+    return {**summary, "run_id": run.run_id, "start_step_hours": step - 3, "end_step_hours": step}
 
 
 def get_point_forecast(run_id: str, lat: float, lon: float) -> dict:

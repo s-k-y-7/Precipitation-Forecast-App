@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchForecastRuns, fetchPointForecast, intervalTileUrl, precipitationTileUrl, searchPlaces } from './forecasts';
+import { fetchForecastRuns, fetchIntervalOverview, fetchPointForecast, intervalTileUrl, precipitationTileUrl, searchPlaces } from './forecasts';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -46,5 +46,15 @@ describe('forecast API helpers', () => {
 
     await expect(searchPlaces('New Delhi & NCR', signal)).resolves.toEqual(result);
     expect(fetch).toHaveBeenCalledWith('/api/places/search/?q=New+Delhi+%26+NCR', { signal });
+  });
+
+  it('loads an interval overview scoped to the selected run and time step', async () => {
+    const result = { run_id: 'ifs-test', start_step_hours: 3, end_step_hours: 6, max_precipitation_mm: 12.5,
+      max_grid_point: { lat: 23.25, lon: 77.5 }, valid_grid_points: 1000 };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => result }));
+    const signal = new AbortController().signal;
+
+    await expect(fetchIntervalOverview('ifs-test', 6, signal)).resolves.toEqual(result);
+    expect(fetch).toHaveBeenCalledWith('/api/forecast-runs/ifs-test/precipitation/summary/6/', { signal });
   });
 });

@@ -5,6 +5,8 @@ import math
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
+
 BOUNDARY_VERSION = "india-states-simplified-v1"
 BOUNDARY_PATH = Path(__file__).resolve().parent.parent / "data" / "india.geojson"
 
@@ -39,6 +41,60 @@ def is_inside_india(lon: float, lat: float) -> bool:
         if _ring_contains((lon, lat), polygon[0]) and not any(_ring_contains((lon, lat), hole) for hole in polygon[1:]):
             return True
     return False
+
+
+def _ring_contains_points(longitudes: np.ndarray, latitudes: np.ndarray, ring: list[list[float]]) -> np.ndarray:
+    inside = np.zeros(longitudes.shape, dtype=bool)
+    previous_lon, previous_lat = ring[-1]
+    for longitude, latitude in ring:
+        if latitude != previous_lat:
+            crosses = (latitude > latitudes) != (previous_lat > latitudes)
+            intersection = (previous_lon - longitude) * (latitudes - latitude) / (previous_lat - latitude) + longitude
+            inside ^= crosses & (longitudes < intersection)
+        previous_lon, previous_lat = longitude, latitude
+    return inside
+
+
+@lru_cache(maxsize=4)
+def india_grid_mask(grid) -> np.ndarray:
+    """Mask grid-cell centers inside the bundled India polygon, cached by grid geometry."""
+    polygons = list(_polygons(india_geojson()))
+    all_points = [point for polygon in polygons for ring in polygon for point in ring]
+    west = min(point[0] for point in all_points)
+    east = max(point[0] for point in all_points)
+    south = min(point[1] for point in all_points)
+    north = max(point[1] for point in all_points)
+
+    longitude_axis = (grid.first_longitude + np.arange(grid.width) * grid.longitude_increment + 180.0) % 360.0 - 180.0
+    latitude_axis = grid.first_latitude - np.arange(grid.height) * grid.latitude_increment
+    columns = np.flatnonzero((longitude_axis >= west) & (longitude_axis <= east))
+    rows = np.flatnonzero((latitude_axis >= south) & (latitude_axis <= north))
+    result = np.zeros((grid.height, grid.width), dtype=bool)
+    if not len(columns) or not len(rows):
+        return result
+
+    longitudes, latitudes = np.meshgrid(longitude_axis[columns], latitude_axis[rows])
+    points_lon, points_lat = longitudes.ravel(), latitudes.ravel()
+    inside = np.zeros(points_lon.shape, dtype=bool)
+    for polygon in polygons:
+        outer = polygon[0]
+        polygon_west = min(point[0] for point in outer)
+        polygon_east = max(point[0] for point in outer)
+        polygon_south = min(point[1] for point in outer)
+        polygon_north = max(point[1] for point in outer)
+        candidate = np.flatnonzero(
+            (points_lon >= polygon_west) & (points_lon <= polygon_east)
+            & (points_lat >= polygon_south) & (points_lat <= polygon_north)
+        )
+        if not len(candidate):
+            continue
+        in_polygon = _ring_contains_points(points_lon[candidate], points_lat[candidate], outer)
+        for hole in polygon[1:]:
+            in_polygon &= ~_ring_contains_points(points_lon[candidate], points_lat[candidate], hole)
+        inside[candidate] |= in_polygon
+
+    result[np.ix_(rows, columns)] = inside.reshape((len(rows), len(columns)))
+    return result
 
 
 def india_tile_mask(z: int, x: int, y: int, size: int = 256):

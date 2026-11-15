@@ -36,6 +36,24 @@ export type PointForecast = {
   intervals: { start_step_hours: number; end_step_hours: number; valid_time: string; precipitation_mm: number | null }[];
 };
 
+export type IntervalOverview = {
+  run_id: string;
+  start_step_hours: number;
+  end_step_hours: number;
+  max_precipitation_mm: number | null;
+  max_grid_point: { lat: number; lon: number } | null;
+  valid_grid_points: number;
+};
+
+export async function fetchIntervalOverview(runId: string, step: number, signal?: AbortSignal): Promise<IntervalOverview> {
+  const response = await fetch(
+    `/api/forecast-runs/${encodeURIComponent(runId)}/precipitation/summary/${step}/`,
+    { signal },
+  );
+  if (!response.ok) throw new Error(`India-wide forecast overview could not be loaded (${response.status}).`);
+  return response.json() as Promise<IntervalOverview>;
+}
+
 export type PlaceSearchResult = {
   id: number;
   name: string;

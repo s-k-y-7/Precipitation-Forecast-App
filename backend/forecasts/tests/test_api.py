@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -118,3 +119,27 @@ class ForecastRunApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["type"], "FeatureCollection")
         self.assertGreater(len(response.data["features"]), 1)
+
+    def test_interval_summary_is_run_and_step_scoped(self):
+        summary = {
+            "max_precipitation_mm": 12.5,
+            "max_grid_point": {"lat": 23.25, "lon": 77.5},
+            "valid_grid_points": 1000,
+        }
+        with patch("forecasts.views.get_interval_overview", return_value=summary) as get_overview:
+            response = self.client.get(
+                f"/api/forecast-runs/{self.latest.run_id}/precipitation/summary/6/"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["max_precipitation_mm"], 12.5)
+        self.assertEqual(response.data["start_step_hours"], 3)
+        self.assertEqual(response.data["end_step_hours"], 6)
+        get_overview.assert_called_once_with(self.latest, 6)
+
+    def test_interval_summary_rejects_invalid_step_and_missing_run(self):
+        invalid = self.client.get(f"/api/forecast-runs/{self.latest.run_id}/precipitation/summary/4/")
+        missing = self.client.get("/api/forecast-runs/not-registered/precipitation/summary/3/")
+
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(missing.status_code, 404)

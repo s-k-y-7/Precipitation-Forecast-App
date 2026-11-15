@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from forecasts.models import ForecastRun
 from forecasts.pipeline.grib import ForecastFieldError
 from forecasts.pipeline.grid import GridMetadataError
-from forecasts.pipeline.service import get_forecast_tile, get_interval_tile, get_point_forecast
+from forecasts.pipeline.service import get_forecast_tile, get_interval_overview, get_interval_tile, get_point_forecast
 from forecasts.pipeline.india import coverage_geometry
 from forecasts.pipeline.places import search_places
 from forecasts.serializers import ForecastRunSerializer
@@ -122,6 +122,36 @@ class IntervalTileView(PrecipitationTileView):
         response["X-Forecast-Run"] = run.run_id
         response["X-Forecast-Interval"] = f"{step - 3}/{step}"
         response["X-Forecast-Valid-Time"] = (run.initialization_time + timedelta(hours=step)).isoformat()
+        return response
+
+
+class IntervalSummaryView(APIView):
+    def get(self, request, run_id: str, step: int):
+        if step not in settings.FORECAST_STEPS_HOURS:
+            return Response({"detail": "Forecast step must be between +3h and +24h in 3-hour intervals."}, status=400)
+        run = ForecastRun.objects.filter(run_id=run_id).first()
+        if run is None or step not in run.available_steps_hours:
+            return Response({"detail": "Forecast run or requested step is unavailable."}, status=404)
+        now = timezone.now()
+        if run.source_expires_at <= now and (run.cache_expires_at is None or run.cache_expires_at <= now):
+            return Response({"detail": "Forecast run has expired."}, status=410)
+        try:
+            summary = get_interval_overview(run, step)
+        except (ForecastFieldError, GridMetadataError):
+            return Response({"detail": "The ECMWF field could not be validated or decoded."}, status=502)
+        except ValueError as error:
+            return Response({"detail": str(error)}, status=422)
+        except Exception:
+            logger.exception("Forecast interval summary failed for %s step %s", run.run_id, step)
+            return Response({"detail": "Forecast interval summary is unavailable. Try again later."}, status=503)
+
+        response = Response({
+            "run_id": run.run_id,
+            "start_step_hours": step - 3,
+            "end_step_hours": step,
+            **summary,
+        })
+        response["Cache-Control"] = "no-store"
         return response
 
 

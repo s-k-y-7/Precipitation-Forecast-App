@@ -2,9 +2,11 @@ from django.test import SimpleTestCase
 import numpy as np
 
 from forecasts.pipeline.grid import (
+    GridMetadata,
     GridMetadataError,
     cache_key,
     interval_precipitation,
+    summarize_interval_grid,
     render_precipitation_tile,
     validate_forecast_metadata,
 )
@@ -101,3 +103,28 @@ class ForecastMetadataTests(SimpleTestCase):
         self.assertEqual(image.getpixel((1, 0)), (187, 222, 251, 180))
         self.assertEqual(image.getpixel((2, 0)), (30, 136, 229, 205))
         self.assertEqual(image.getpixel((3, 0))[3], 0)
+
+    def test_interval_summary_uses_only_grid_points_inside_india(self):
+        grid = GridMetadata(12, 4, 88.0, 24.0, 0.25, 0.25, 1000.0)
+        current = np.full(grid.width * grid.height, 0.001, dtype=np.float64)
+        current[1 * grid.width + 10] = 0.099  # 23.75N, 90.5E is outside the India boundary.
+        current[1 * grid.width] = 0.005  # 23.75N, 88E is inside India.
+
+        result = summarize_interval_grid(
+            None,
+            current,
+            grid,
+            current_error_m=0.0,
+        )
+
+        self.assertEqual(result["max_precipitation_mm"], 5.0)
+        self.assertEqual(result["max_grid_point"], {"lat": 23.75, "lon": 88.0})
+        self.assertGreater(result["valid_grid_points"], 0)
+
+    def test_interval_summary_returns_no_maximum_when_all_in_india_grid_data_is_missing(self):
+        grid = GridMetadata(4, 4, 77.0, 24.0, 0.25, 0.25, 1000.0)
+        result = summarize_interval_grid(None, np.full(16, np.nan), grid)
+
+        self.assertIsNone(result["max_precipitation_mm"])
+        self.assertIsNone(result["max_grid_point"])
+        self.assertEqual(result["valid_grid_points"], 0)
