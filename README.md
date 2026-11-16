@@ -2,6 +2,8 @@
 
 Interactive India precipitation map for ECMWF IFS operational forecasts. Select a 3-hour interval through +24h, click a location inside India, and inspect the real forecast interval series at the nearest ECMWF grid point. Forecast values come from ECMWF Open Data; the application does not substitute mock forecast data.
 
+## [Live Demo](https://drive.google.com/file/d/1TmCS909cBraKnL31Hys2hPJ8Xmwp6p-k/view?usp=share_link)
+
 ## Architecture
 
 - `backend/` contains the Django REST API, persistent forecast-run metadata, ECMWF retrieval, GRIB validation, and XYZ map-tile rendering.
